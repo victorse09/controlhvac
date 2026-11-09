@@ -1,0 +1,31 @@
+# Entornos virtuales de Python
+venv/
+.venv/
+env/
+
+# Caché de Python y archivos compilados
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Empaquetado y compilación (PyInstaller / Inno Setup)
+build/
+dist/
+Output/
+
+# Datos locales del usuario y backups (se autogeneran en ejecución)
+data/
+
+# Archivos de pruebas y reportes temporales
+test_*.pdf
+Listado_Equipos_en_Averia.pdf
+Historial_Averias_Incidencias.csv
+fix_broken_f.py
+patch_*.py
+
+# Configuración de IDE / Sistema Operativo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
