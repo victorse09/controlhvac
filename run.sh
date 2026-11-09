@@ -65,7 +65,19 @@ fi
 
 echo -e "${GREEN}[OK] Python ${PYTHON_VERSION} detectado ($PYTHON_CMD)${NC}"
 
-# --- 2. Create virtual environment if it doesn't exist ---
+# --- 2. Create or repair virtual environment if needed ---
+NEED_VENV_UPGRADE=0
+if [ -d "$VENV_DIR/bin" ]; then
+    if [ ! -x "$VENV_DIR/bin/python" ]; then
+        NEED_VENV_UPGRADE=1
+    else
+        VENV_PY_VER=$("$VENV_DIR/bin/python" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || true)
+        if [ "$VENV_PY_VER" != "$PYTHON_VERSION" ]; then
+            NEED_VENV_UPGRADE=1
+        fi
+    fi
+fi
+
 if [ ! -f "$VENV_DIR/bin/activate" ] && [ ! -f "$VENV_DIR/Scripts/activate" ]; then
     echo -e "${YELLOW}[INFO] Creando entorno virtual...${NC}"
     if ! "$PYTHON_CMD" -m venv "$VENV_DIR"; then
@@ -73,6 +85,31 @@ if [ ! -f "$VENV_DIR/bin/activate" ] && [ ! -f "$VENV_DIR/Scripts/activate" ]; t
         exit 1
     fi
     echo -e "${GREEN}[OK] Entorno virtual creado en $VENV_DIR${NC}"
+elif [ "$NEED_VENV_UPGRADE" -eq 1 ]; then
+    echo -e "${YELLOW}[INFO] Detectada actualización de Python a ${PYTHON_VERSION}. Reparando entorno virtual...${NC}"
+    rm -f "$VENV_DIR/bin/python" "$VENV_DIR/bin/python3" "$VENV_DIR/bin/python3."*
+    if ! "$PYTHON_CMD" -m venv --upgrade "$VENV_DIR"; then
+        echo -e "${RED}[ERROR] No se pudo actualizar el entorno virtual.${NC}"
+        exit 1
+    fi
+    # Migrate packages from previous python3.X site-packages so ABI-compatible packages (e.g. PySide6) remain available
+    TARGET_SITE="$VENV_DIR/lib/python${PYTHON_VERSION}/site-packages"
+    if [ -d "$TARGET_SITE" ]; then
+        for OLD_SITE in "$VENV_DIR"/lib/python3.*/site-packages; do
+            if [ -d "$OLD_SITE" ] && [ "$OLD_SITE" != "$TARGET_SITE" ]; then
+                echo -e "${YELLOW}[INFO] Migrando paquetes compatibles desde $(basename "$(dirname "$OLD_SITE")")...${NC}"
+                cp -rn "$OLD_SITE"/* "$TARGET_SITE"/ 2>/dev/null || true
+            fi
+        done
+        # If Pillow C-extension does not match the new Python version, copy system python3-pil if available
+        if ! "$VENV_DIR/bin/python" -c "from PIL import Image" &> /dev/null; then
+            if [ -d "/usr/lib/python3/dist-packages/PIL" ]; then
+                rm -rf "$TARGET_SITE/PIL" "$TARGET_SITE"/pillow*
+                cp -r /usr/lib/python3/dist-packages/PIL /usr/lib/python3/dist-packages/pillow* "$TARGET_SITE"/ 2>/dev/null || true
+            fi
+        fi
+    fi
+    echo -e "${GREEN}[OK] Entorno virtual actualizado a Python ${PYTHON_VERSION}${NC}"
 else
     echo -e "${GREEN}[OK] Entorno virtual encontrado${NC}"
 fi
@@ -98,7 +135,7 @@ if ! python -m pip --version &> /dev/null; then
 fi
 
 # Check if required packages are already importable to avoid failing or waiting when offline
-if python -c "import PySide6, reportlab, openpyxl, matplotlib" &> /dev/null; then
+if python -c "import PySide6, PIL, openpyxl, fpdf" &> /dev/null; then
     echo -e "${GREEN}[OK] Dependencias verificadas en el entorno virtual${NC}"
 else
     echo -e "${YELLOW}[INFO] Actualizando pip...${NC}"
